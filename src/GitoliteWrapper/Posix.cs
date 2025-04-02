@@ -10,8 +10,7 @@ internal static partial class Posix
         realArgs[0] = path;
         realArgs[^1] = null;
         args.CopyTo(realArgs, 1);
-        execv(path, realArgs);
-        return execv(path, realArgs) == -1 
+        return execvp(path, realArgs) == -1
             ? (Marshal.GetLastPInvokeError(), Marshal.GetLastPInvokeErrorMessage()) 
             : (0, string.Empty);
     }
@@ -19,5 +18,5 @@ internal static partial class Posix
     [LibraryImport("c", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
     // ReSharper disable once IdentifierTypo
     // ReSharper disable once InconsistentNaming
-    private static partial int execv(string path, [In] string?[] argv);
+    private static partial int execvp(string path, [In] string?[] argv);
 }
