@@ -9,42 +9,35 @@ internal static class Program
     // TODO: Don't hardcode the path to gitolite-shell.
     private const string GitoliteShellPath = "/usr/bin/gitolite-shell";
 
-    private static readonly ByteString[] CertTypes =
-    [
-        (ByteString)"ssh-rsa-cert-v01@openssh.com"u8,
-        (ByteString)"ssh-dss-cert-v01@openssh.com"u8,
-        (ByteString)"ecdsa-sha2-nistp256-cert-v01@openssh.com"u8,
-        (ByteString)"ecdsa-sha2-nistp384-cert-v01@openssh.com"u8,
-        (ByteString)"ecdsa-sha2-nistp521-cert-v01@openssh.com"u8,
-        (ByteString)"ssh-ed25519-cert-v01@openssh.com"u8,
-    ];
-
     public static int Main(string[] args)
     {
         var parseOnly = args.Any(a => a is "-t" or "--test");
         var userAuth = ReadUserAuthContents();
 
-        var shellArgs = Array.Empty<string>();
+        var username = string.Empty;
         if (userAuth != null)
         {
             var (keyType, key) = UserAuthParser.FindPublicKey(userAuth);
-            if (CertTypes.Any(certType => certType == keyType)) {
-                // TODO: Parse the key to find the Gitolite user.
-                Console.Out.WriteLine($"TODO: parse key of type: {keyType}");
+            if (SshPublicKey.IsSupportedCertType(keyType))
+            {
+                var decodedKey = ByteString.FromBase64(key);
+                if (decodedKey != null)
+                    username = SshPublicKey.FindGitoliteUser(decodedKey);
             }
         }
 
         if (!parseOnly)
         {
+            string[] shellArgs = username.Length > 0 ? [username] : [];
             // TODO: errCode and errDescription should be logged.
             var (errCode, errDescription) = Posix.Exec(GitoliteShellPath, shellArgs);
             return 1;
         }
 
-        if (shellArgs.Length < 1)
+        if (username.Length == 0)
             return 1;
 
-        Console.Out.WriteLine(shellArgs[0]);
+        Console.Out.WriteLine(username);
         return 0;
     }
 

@@ -2,7 +2,7 @@ using System;
 
 namespace GitoliteWrapper;
 
-internal sealed class UserAuthParser
+internal static class UserAuthParser
 {
     private const byte CharA = (byte)'a';
     private const byte CharAUp = (byte)'A';

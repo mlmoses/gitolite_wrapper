@@ -1,7 +1,10 @@
 using System;
+using System.Buffers;
+using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Text;
 
 namespace GitoliteWrapper;
 
@@ -109,6 +112,19 @@ internal sealed class ByteString : IReadOnlyList<byte>, IEquatable<ByteString>
         return result;
     }
 
+    /// <summary>
+    /// Creates a new <see cref="ByteString"/> by decoding the bytes from a Base64 encoded string.
+    /// </summary>
+    /// <param name="base64Bytes">The UTF-8 (or ASCII) Base64 encoded string.</param>
+    /// <returns>A new <see cref="ByteString"/> containing the bytes decoded from
+    /// <paramref name="base64Bytes"/>.</returns>
+    public static ByteString? FromBase64(ReadOnlySpan<byte> base64Bytes)
+    {
+        var bytes = new byte[base64Bytes.Length];
+        var status = Base64.DecodeFromUtf8(base64Bytes, bytes, out _, out var written);
+        return status == OperationStatus.Done ? new ByteString(bytes, 0, written) : null;
+    }
+
     #region Constructors
 
     private ByteString(ReadOnlySpan<byte> bytes) : this(bytes.ToArray(), 0, bytes.Length)
@@ -169,8 +185,10 @@ internal sealed class ByteString : IReadOnlyList<byte>, IEquatable<ByteString>
         get
         {
             var (offset, length) = range.GetOffsetAndLength(Length);
-            if (offset < 0 || Length <= offset)
-                throw new ArgumentOutOfRangeException(nameof(range));
+
+            ArgumentOutOfRangeException.ThrowIfLessThan(offset, 0, nameof(range));
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(offset, Length, nameof(range));
+
             if (length <= 0)
                 return Empty;
             if (offset == 0 && length == Length)
@@ -208,10 +226,84 @@ internal sealed class ByteString : IReadOnlyList<byte>, IEquatable<ByteString>
     /// keep the entire dataset. This method does require a copy to accomplish its goal.</para>
     /// <para>If there is no extraneous data, this method simply returns a reference to the current object.</para>
     /// </remarks>
+    // TODO: Find a better name - we're not really "compacting" anything here.
     public ByteString Compact() =>
         Offset > 0 || Length != Bytes.Length
             ? new ByteString(((ReadOnlySpan<byte>)Bytes).Slice(Offset, Length))
             : this;
+
+    /// <summary>
+    /// Returns a new <see cref="ByteString"/> that is a substring of this one.
+    /// </summary>
+    /// <param name="offset">The offset into this <see cref="ByteString"/> where the slice should begin.</param>
+    /// <param name="length">The length of the slice.</param>
+    /// <returns>A new <see cref="ByteString"/> that is a substring of this one.</returns>
+    public ByteString Slice(int offset, int length)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(offset, 0, nameof(offset));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(offset, Length, nameof(offset));
+        ArgumentOutOfRangeException.ThrowIfNegative(length, nameof(length));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, Length - offset, nameof(length));
+
+        if (length == 0)
+            return Empty;
+
+        if (offset == 0 && length == Length)
+            return this;
+
+        return new ByteString(Bytes, Offset + offset, length);
+    }
+
+    /// <summary>
+    /// Decode the bytes contained in this <see cref="ByteString"/> to a string.
+    /// </summary>
+    /// <param name="encoding">The encoding to use, defaults to UTF-8 if null.</param>
+    /// <returns>This <see cref="ByteString"/> decoded with the specified encoding to a string.</returns>
+    public string Decode(Encoding? encoding = null) => Decode(0, Length, encoding);
+
+    /// <summary>
+    /// Decode the bytes contained in this <see cref="ByteString"/> to a string.
+    /// </summary>
+    /// <param name="offset">The offset of the byte at which to start decoding</param>
+    /// <param name="length">The number of bytes to decode.</param>
+    /// <param name="encoding">The encoding to use, defaults to UTF-8 if null.</param>
+    /// <returns>The specified bytes decoded with the specified encoding to a string</returns>
+    public string Decode(int offset, int length, Encoding? encoding = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(offset, 0, nameof(offset));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(offset, Length, nameof(offset));
+        ArgumentOutOfRangeException.ThrowIfNegative(length, nameof(length));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, Length - offset, nameof(length));
+
+        if (length == 0)
+            return string.Empty;
+
+        return (encoding ?? Encoding.UTF8).GetString(Bytes, Offset + offset, length);
+    }
+
+    /// <summary>
+    /// Determines if this <see cref="ByteString"/> begins with the bytes of another <see cref="ByteString"/>.
+    /// </summary>
+    /// <param name="other">The bytes to test with.</param>
+    /// <returns>True if this <see cref="ByteString"/> starts with the bytes of <paramref name="other"/>.</returns>
+    public bool StartsWith(ByteString other)
+    {
+        if (ReferenceEquals(this, other))
+            return true;
+
+        if (Bytes == other.Bytes && Offset == other.Offset)
+            return Length >= other.Length;
+
+        if (Length < other.Length)
+            return false;
+
+        var l = other.Length;
+        for (var i = 0; i < l; i++)
+            if (this[i] != other[i])
+                return false;
+
+        return true;
+    }
 
     #region IEnumerable<byte> implementations
 
@@ -270,7 +362,7 @@ internal sealed class ByteString : IReadOnlyList<byte>, IEquatable<ByteString>
 
     public bool Equals(ByteString? other)
     {
-        if (other == null)
+        if (ReferenceEquals(other, null))
             return false;
 
         if (ReferenceEquals(this, other))
