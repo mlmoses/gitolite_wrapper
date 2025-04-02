@@ -18,7 +18,7 @@ internal static class SshPublicKeyExtensions
         Ed25519
     }
 
-    private static readonly byte[][] CertTypes =
+    private static readonly ReadOnlyMemory<byte>[] CertTypes =
     [
         "ssh-rsa-cert-v01@openssh.com"u8.ToArray(),
         "ssh-dss-cert-v01@openssh.com"u8.ToArray(),
@@ -67,7 +67,7 @@ internal static class SshPublicKeyExtensions
         var l = CertTypes.Length;
         for (var i = 0; i < l; i++)
         {
-            if (((ReadOnlySpan<byte>)CertTypes[i]).SequenceEqual(typeString))
+            if (CertTypes[i].Span.SequenceEqual(typeString))
                 return (CertType)i;
         }
 
