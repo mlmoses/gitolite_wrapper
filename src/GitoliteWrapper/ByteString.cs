@@ -8,7 +8,7 @@ using System.Text;
 
 namespace GitoliteWrapper;
 
-internal sealed class ByteString : IReadOnlyList<byte>, IEquatable<ByteString>
+internal struct ByteString : IReadOnlyList<byte>, IEquatable<ByteString>
 {
     /// <summary>
     /// Gets the byte array containing the bytes for this <see cref="ByteString"/>.
@@ -44,10 +44,9 @@ internal sealed class ByteString : IReadOnlyList<byte>, IEquatable<ByteString>
 
     public static implicit operator ReadOnlyMemory<byte>(ByteString byteString) => byteString.AsReadOnlyMemory();
 
-    public static bool operator ==(ByteString? lhs, ByteString? rhs) => lhs?.Equals(rhs) ?? ReferenceEquals(rhs, null);
+    public static bool operator ==(ByteString lhs, ByteString rhs) => lhs.Equals(rhs);
 
-    public static bool operator !=(ByteString? lhs, ByteString? rhs) =>
-        !(lhs?.Equals(rhs) ?? ReferenceEquals(rhs, null));
+    public static bool operator !=(ByteString lhs, ByteString rhs) => !lhs.Equals(rhs);
 
     #endregion
 
@@ -118,11 +117,12 @@ internal sealed class ByteString : IReadOnlyList<byte>, IEquatable<ByteString>
     /// <param name="base64Bytes">The UTF-8 (or ASCII) Base64 encoded string.</param>
     /// <returns>A new <see cref="ByteString"/> containing the bytes decoded from
     /// <paramref name="base64Bytes"/>.</returns>
-    public static ByteString? FromBase64(ReadOnlySpan<byte> base64Bytes)
+    public static bool FromBase64(ReadOnlySpan<byte> base64Bytes, out ByteString decodedBytes)
     {
         var bytes = new byte[base64Bytes.Length];
-        var status = Base64.DecodeFromUtf8(base64Bytes, bytes, out _, out var written);
-        return status == OperationStatus.Done ? new ByteString(bytes, 0, written) : null;
+        var success = Base64.DecodeFromUtf8(base64Bytes, bytes, out _, out var written) == OperationStatus.Done;
+        decodedBytes = success ? new ByteString(bytes, 0, written) : Empty;
+        return success;
     }
 
     #region Constructors
@@ -288,9 +288,6 @@ internal sealed class ByteString : IReadOnlyList<byte>, IEquatable<ByteString>
     /// <returns>True if this <see cref="ByteString"/> starts with the bytes of <paramref name="other"/>.</returns>
     public bool StartsWith(ByteString other)
     {
-        if (ReferenceEquals(this, other))
-            return true;
-
         if (Bytes == other.Bytes && Offset == other.Offset)
             return Length >= other.Length;
 
@@ -360,14 +357,8 @@ internal sealed class ByteString : IReadOnlyList<byte>, IEquatable<ByteString>
 
     public override bool Equals(object? obj) => obj is ByteString && Equals(obj);
 
-    public bool Equals(ByteString? other)
+    public bool Equals(ByteString other)
     {
-        if (ReferenceEquals(other, null))
-            return false;
-
-        if (ReferenceEquals(this, other))
-            return true;
-
         if (Length != other.Length)
             return false;
 

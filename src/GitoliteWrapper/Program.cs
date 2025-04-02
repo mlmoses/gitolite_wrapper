@@ -12,18 +12,13 @@ internal static class Program
     public static int Main(string[] args)
     {
         var parseOnly = args.Any(a => a is "-t" or "--test");
-        var userAuth = ReadUserAuthContents();
-
         var username = string.Empty;
-        if (userAuth != null)
+
+        if (ReadUserAuthContents(out var userAuth))
         {
             var (keyType, key) = UserAuthParser.FindPublicKey(userAuth);
-            if (SshPublicKey.IsSupportedCertType(keyType))
-            {
-                var decodedKey = ByteString.FromBase64(key);
-                if (decodedKey != null)
-                    username = SshPublicKey.FindGitoliteUser(decodedKey);
-            }
+            if (SshPublicKey.IsSupportedCertType(keyType) && ByteString.FromBase64(key, out var decodedKey))
+                username = SshPublicKey.FindGitoliteUser(decodedKey);
         }
 
         if (!parseOnly)
@@ -41,26 +36,29 @@ internal static class Program
         return 0;
     }
 
-    private static ByteString? ReadUserAuthContents()
+    private static bool ReadUserAuthContents(out ByteString content)
     {
         var sshUserAuth = Environment.GetEnvironmentVariable("SSH_USER_AUTH");
-        if (string.IsNullOrEmpty(sshUserAuth))
-            return null;
+        if (!string.IsNullOrEmpty(sshUserAuth))
+        {
+            FileStream? stream = null;
+            try
+            {
+                stream = new FileStream(sshUserAuth, FileMode.Open, FileAccess.Read, FileShare.None);
+                content = ByteString.From(stream);
+                return true;
+            }
+            catch
+            {
+                // TODO: Log this exception.
+            }
+            finally
+            {
+                stream?.Dispose();
+            }
+        }
 
-        FileStream? stream = null;
-        try
-        {
-            stream = new FileStream(sshUserAuth, FileMode.Open, FileAccess.Read, FileShare.None);
-            return ByteString.From(stream);
-        }
-        catch
-        {
-            // TODO: Log this exception.
-            return null;
-        }
-        finally
-        {
-            stream?.Dispose();
-        }
+        content = ByteString.Empty;
+        return false;
     }
 }
