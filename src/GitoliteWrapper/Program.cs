@@ -14,11 +14,8 @@ internal static class Program
         if (ReadUserAuthContents(out var userAuth))
         {
             var (keyTypeRange, keyRange) = UserAuthParser.FindPublicKey(userAuth);
-            var keyType = userAuth[keyTypeRange];
-            var key = userAuth[keyRange];
-
-            if (keyType.IsSupportedCertType() && key.DecodeBase64(out var decodedKey))
-                username = decodedKey.FindGitoliteUser();
+            if (SshPublicKeyExtensions.IsSupportedCertType(userAuth[keyTypeRange]) && userAuth[keyRange].DecodeBase64(out var key))
+                username = key.FindGitoliteUser();
         }
 
         if (!parsedArgs.Test)
@@ -69,7 +66,7 @@ internal static class Program
         return new Args(shellPath, test);
     }
 
-    private static bool ReadUserAuthContents(out ReadOnlySpan<byte> content)
+    private static bool ReadUserAuthContents(out Span<byte> content)
     {
         var path = Environment.GetEnvironmentVariable("SSH_USER_AUTH");
         if (!string.IsNullOrEmpty(path))
@@ -77,12 +74,12 @@ internal static class Program
             var data = File.ReadAllBytes(path);
             if (data.Length > 0)
             {
-                content = new ReadOnlySpan<byte>(data);
+                content = data.AsSpan();
                 return true;
             }
         }
 
-        content = ReadOnlySpan<byte>.Empty;
+        content = Span<byte>.Empty;
         return false;
     }
 

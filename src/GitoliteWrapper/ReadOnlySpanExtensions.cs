@@ -10,11 +10,10 @@ namespace GitoliteWrapper;
 /// </summary>
 internal static class ReadOnlySpanExtensions
 {
-    public static bool DecodeBase64(this ReadOnlySpan<byte> base64, out ReadOnlySpan<byte> decodedBytes)
+    public static bool DecodeBase64(this Span<byte> base64, out ReadOnlySpan<byte> data)
     {
-        var bytes = new byte[base64.Length];
-        var success = Base64.DecodeFromUtf8(base64, bytes, out _, out var written) == OperationStatus.Done;
-        decodedBytes = success ? new ReadOnlySpan<byte>(bytes, 0, written) : ReadOnlySpan<byte>.Empty;
+        var success = Base64.DecodeFromUtf8InPlace(base64, out var written) == OperationStatus.Done && written > 0;
+        data = success ? base64[..written] : ReadOnlySpan<byte>.Empty;
         return success;
     }
 
