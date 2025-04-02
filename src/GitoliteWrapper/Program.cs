@@ -1,17 +1,14 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace GitoliteWrapper;
 
 internal static class Program
 {
-    // TODO: Don't hardcode the path to gitolite-shell.
-    private const string GitoliteShellPath = "/usr/bin/gitolite-shell";
-
     public static int Main(string[] args)
     {
-        var parseOnly = args.Any(a => a is "-t" or "--test");
+        var parsedArgs = ParseArgs(args);
         var username = string.Empty;
 
         if (ReadUserAuthContents(out var userAuth))
@@ -24,11 +21,11 @@ internal static class Program
                 username = decodedKey.FindGitoliteUser();
         }
 
-        if (!parseOnly)
+        if (!parsedArgs.Test)
         {
             string[] shellArgs = username.Length > 0 ? [username] : [];
             // TODO: errCode and errDescription should be logged.
-            var (errCode, errDescription) = Posix.Exec(GitoliteShellPath, shellArgs);
+            var (errCode, errDescription) = Posix.Exec(parsedArgs.ShellPath, shellArgs);
             return 1;
         }
 
@@ -37,6 +34,39 @@ internal static class Program
 
         Console.Out.WriteLine(username);
         return 0;
+    }
+
+    private static Args ParseArgs(IEnumerable<string> args)
+    {
+        var shellPath = "gitolite";
+        var test = false;
+        var next = 0;
+        foreach (var a in args)
+        {
+            switch (next)
+            {
+                case 0:
+                    switch (a)
+                    {
+                        case "--test":
+                        case "-t":
+                            test = true;
+                            break;
+                        case "--shell":
+                        case "-s":
+                            next = 1;
+                            break;
+                    }
+                    break;
+                case 1:
+                    if (!string.IsNullOrWhiteSpace(a))
+                        shellPath = a.Trim();
+                    next = 0;
+                    break;
+            }
+        }
+
+        return new Args(shellPath, test);
     }
 
     private static bool ReadUserAuthContents(out ReadOnlySpan<byte> content)
@@ -54,5 +84,11 @@ internal static class Program
 
         content = ReadOnlySpan<byte>.Empty;
         return false;
+    }
+
+    private sealed class Args(string shellPath, bool test)
+    {
+        public string ShellPath { get; } = shellPath;
+        public bool Test { get; } = test;
     }
 }
