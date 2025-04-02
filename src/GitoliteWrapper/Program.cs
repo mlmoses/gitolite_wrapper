@@ -16,9 +16,12 @@ internal static class Program
 
         if (ReadUserAuthContents(out var userAuth))
         {
-            var (keyType, key) = UserAuthParser.FindPublicKey(userAuth);
-            if (SshPublicKey.IsSupportedCertType(keyType) && ByteString.FromBase64(key, out var decodedKey))
-                username = SshPublicKey.FindGitoliteUser(decodedKey);
+            var (keyTypeRange, keyRange) = UserAuthParser.FindPublicKey(userAuth);
+            var keyType = userAuth[keyTypeRange];
+            var key = userAuth[keyRange];
+
+            if (keyType.IsSupportedCertType() && key.DecodeBase64(out var decodedKey))
+                username = decodedKey.FindGitoliteUser();
         }
 
         if (!parseOnly)
@@ -36,29 +39,20 @@ internal static class Program
         return 0;
     }
 
-    private static bool ReadUserAuthContents(out ByteString content)
+    private static bool ReadUserAuthContents(out ReadOnlySpan<byte> content)
     {
-        var sshUserAuth = Environment.GetEnvironmentVariable("SSH_USER_AUTH");
-        if (!string.IsNullOrEmpty(sshUserAuth))
+        var path = Environment.GetEnvironmentVariable("SSH_USER_AUTH");
+        if (!string.IsNullOrEmpty(path))
         {
-            FileStream? stream = null;
-            try
+            var data = File.ReadAllBytes(path);
+            if (data.Length > 0)
             {
-                stream = new FileStream(sshUserAuth, FileMode.Open, FileAccess.Read, FileShare.None);
-                content = ByteString.From(stream);
+                content = new ReadOnlySpan<byte>(data);
                 return true;
-            }
-            catch
-            {
-                // TODO: Log this exception.
-            }
-            finally
-            {
-                stream?.Dispose();
             }
         }
 
-        content = ByteString.Empty;
+        content = ReadOnlySpan<byte>.Empty;
         return false;
     }
 }

@@ -1,9 +1,11 @@
 using System;
-using System.Linq;
 
 namespace GitoliteWrapper;
 
-internal static class SshPublicKey
+/// <summary>
+/// Extension methods for parsing OpenSSH data from spans of bytes.
+/// </summary>
+internal static class SshPublicKeyExtensions
 {
     private enum CertType
     {
@@ -16,50 +18,34 @@ internal static class SshPublicKey
         Ed25519
     }
 
-    private static readonly ByteString[] CertTypes =
+    private static readonly byte[][] CertTypes =
     [
-        (ByteString)"ssh-rsa-cert-v01@openssh.com"u8,
-        (ByteString)"ssh-dss-cert-v01@openssh.com"u8,
-        (ByteString)"ecdsa-sha2-nistp256-cert-v01@openssh.com"u8,
-        (ByteString)"ecdsa-sha2-nistp384-cert-v01@openssh.com"u8,
-        (ByteString)"ecdsa-sha2-nistp521-cert-v01@openssh.com"u8,
-        (ByteString)"ssh-ed25519-cert-v01@openssh.com"u8,
+        "ssh-rsa-cert-v01@openssh.com"u8.ToArray(),
+        "ssh-dss-cert-v01@openssh.com"u8.ToArray(),
+        "ecdsa-sha2-nistp256-cert-v01@openssh.com"u8.ToArray(),
+        "ecdsa-sha2-nistp384-cert-v01@openssh.com"u8.ToArray(),
+        "ecdsa-sha2-nistp521-cert-v01@openssh.com"u8.ToArray(),
+        "ssh-ed25519-cert-v01@openssh.com"u8.ToArray(),
     ];
 
-    private static readonly ByteString PrincipalPrefix = (ByteString)"gitolite:"u8;
-
-    public static bool IsSupportedCertType(ByteString type) => CertTypes.Any(t => type == t);
-
-    public static string FindGitoliteUser(ByteString publicKey)
+    public static string FindGitoliteUser(this ReadOnlySpan<byte> publicKey)
     {
-        ByteString principals;
         var typeString = publicKey.ReadSshString(0);
         var offset = typeString.Length + 4;
-        switch ((CertType)Array.IndexOf(CertTypes, typeString))
+        var principals = typeString.GetCertType() switch
         {
-            case CertType.None:
-                var decodedTypeString = typeString.Decode();
-                throw new ArgumentException($"Key type {decodedTypeString} not supported.");
-            case CertType.Dsa:
-                principals = publicKey.ReadPrincipalsFromDsa(offset);
-                break;
-            case CertType.Ecdsa256:
-            case CertType.Ecdsa384:
-            case CertType.Ecdsa521:
-                principals = publicKey.ReadPrincipalsFromEcdsa(offset);
-                break;
-            case CertType.Ed25519:
-                principals = publicKey.ReadPrincipalsFromEd25519(offset);
-                break;
-            case CertType.Rsa:
-                principals = publicKey.ReadPrincipalsFromRsa(offset);
-                break;
-            default:
-                throw new NotSupportedException("Unknown certificate type value.");
-        }
+            CertType.None => throw new ArgumentException($"Key type {typeString.DecodeText()} not supported."),
+            CertType.Dsa => publicKey.ReadPrincipalsFromDsa(offset),
+            CertType.Ecdsa256 or CertType.Ecdsa384 or CertType.Ecdsa521 => publicKey.ReadPrincipalsFromEcdsa(offset),
+            CertType.Ed25519 => publicKey.ReadPrincipalsFromEd25519(offset),
+            CertType.Rsa => publicKey.ReadPrincipalsFromRsa(offset),
+            _ => throw new NotSupportedException("Unknown certificate type value.")
+        };
 
         if (principals.IsEmpty)
             return string.Empty;
+
+        var principalPrefix = "gitolite:"u8;
 
         offset = 0;
         do
@@ -67,14 +53,28 @@ internal static class SshPublicKey
             var p = principals.ReadSshString(offset);
             offset = offset + 4 + p.Length;
 
-            if (p.StartsWith(PrincipalPrefix) && p.Length > PrincipalPrefix.Length)
-                return p.Decode(PrincipalPrefix.Length, p.Length - PrincipalPrefix.Length);
+            if (p.StartsWith(principalPrefix) && p.Length > principalPrefix.Length)
+                return p[principalPrefix.Length..].DecodeText();
         } while (offset < principals.Length);
 
         return string.Empty;
     }
 
-    private static ByteString ReadPrincipalsFromDsa(this ByteString publicKey, int offset)
+    public static bool IsSupportedCertType(this ReadOnlySpan<byte> type) => type.GetCertType() != CertType.None;
+
+    private static CertType GetCertType(this ReadOnlySpan<byte> typeString)
+    {
+        var l = CertTypes.Length;
+        for (var i = 0; i < l; i++)
+        {
+            if (((ReadOnlySpan<byte>)CertTypes[i]).SequenceEqual(typeString))
+                return (CertType)i;
+        }
+
+        return CertType.None;
+    }
+
+    private static ReadOnlySpan<byte> ReadPrincipalsFromDsa(this ReadOnlySpan<byte> publicKey, int offset)
     {
         /*
          * string    "ssh-dss-cert-v01@openssh.com"
@@ -97,26 +97,26 @@ internal static class SshPublicKey
          */
 
         // string nonce
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // mpint p
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // mpint q
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // mpint g
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // mpint y
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // uint64 serial
         // uint32 type
         offset += 12;
         // string key id
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
 
         // string valid principals
         return publicKey.ReadSshString(offset);
     }
 
-    private static ByteString ReadPrincipalsFromEcdsa(this ByteString publicKey, int offset)
+    private static ReadOnlySpan<byte> ReadPrincipalsFromEcdsa(this ReadOnlySpan<byte> publicKey, int offset)
     {
         /*
          * string    "ecdsa-sha2-nistp256-cert-v01@openssh.com" |
@@ -139,22 +139,22 @@ internal static class SshPublicKey
          */
 
         // string nonce
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // string curve
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // string public_key
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // uint64 serial
         // uint32 type
         offset += 12;
         // string key id
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
 
         // string valid principals
         return publicKey.ReadSshString(offset);
     }
 
-    private static ByteString ReadPrincipalsFromEd25519(this ByteString publicKey, int offset)
+    private static ReadOnlySpan<byte> ReadPrincipalsFromEd25519(this ReadOnlySpan<byte> publicKey, int offset)
     {
         /*
          * string    "ssh-ed25519-cert-v01@openssh.com"
@@ -174,20 +174,20 @@ internal static class SshPublicKey
          */
         
         // string nonce
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // string pk
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // uint64 serial
         // uint32 type
         offset += 12;
         // string key id
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
 
         // string valid principals
         return publicKey.ReadSshString(offset);
     }
 
-    private static ByteString ReadPrincipalsFromRsa(this ByteString publicKey, int offset)
+    private static ReadOnlySpan<byte> ReadPrincipalsFromRsa(this ReadOnlySpan<byte> publicKey, int offset)
     {
         /*
          * string    "ssh-rsa-cert-v01@openssh.com"
@@ -208,27 +208,30 @@ internal static class SshPublicKey
          */
 
         // string nonce
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // mpint e
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // mpint n
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
         // uint64 serial
         // uint32 type
         offset += 12;
         // string key id
-        offset += publicKey.ReadSshStringLength(offset) + 4;
+        offset = publicKey.SkipSshString(offset);
 
         // string valid principals
         return publicKey.ReadSshString(offset);
     }
 
-    private static int ReadSshStringLength(this ByteString publicKey, int offset) =>
+    private static int ReadSshStringLength(this ReadOnlySpan<byte> publicKey, int offset) =>
         ((publicKey[offset] & 255) << 24)
         | ((publicKey[offset + 1] & 255) << 16)
         | ((publicKey[offset + 2] & 255) << 8)
         | (publicKey[offset + 3] & 255);
 
-    private static ByteString ReadSshString(this ByteString publicKey, int offset) =>
+    private static ReadOnlySpan<byte> ReadSshString(this ReadOnlySpan<byte> publicKey, int offset) =>
         publicKey.Slice(offset + 4, publicKey.ReadSshStringLength(offset));
+
+    private static int SkipSshString(this ReadOnlySpan<byte> publicKey, int offset) =>
+        offset + publicKey.ReadSshStringLength(offset) + 4;
 }

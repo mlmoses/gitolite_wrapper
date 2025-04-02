@@ -33,10 +33,8 @@ internal static class UserAuthParser
         Error
     }
 
-    private sealed class State(ByteString content)
+    private sealed class State
     {
-        private ByteString Content { get; } = content;
-
         public Status Status { get; set; } = Status.Processing;
         
         public Action<State> Action { get; set; } = StateBeginLine;
@@ -53,35 +51,25 @@ internal static class UserAuthParser
         private int? KeyEnd { get; set; }
         public void SetKeyEnd() => KeyEnd = Offset;
 
-        private int _offset;
+        public int Offset { get; set; }
 
-        public int Offset
-        {
-            get => _offset;
-            set
-            {
-                _offset = value;
-                Byte = Content[value];
-            }
-        }
+        public byte Byte { get; set; }
 
-        public byte Byte { get; private set; }
+        public Range KeyType => GetSubContent(KeyTypeStart, KeyTypeEnd);
 
-        public ByteString KeyType => GetSubContent(KeyTypeStart, KeyTypeEnd);
+        public Range Key => GetSubContent(KeyStart, KeyEnd);
 
-        public ByteString Key => GetSubContent(KeyStart, KeyEnd);
-
-        private ByteString GetSubContent(int? maybeStart, int? maybeEnd)
+        private Range GetSubContent(int? maybeStart, int? maybeEnd)
         {
             if (Status != Status.Success || maybeStart == null)
-                return ByteString.Empty;
+                return ..0;
 
             var start = (int)maybeStart;
             var end = maybeEnd ?? Offset;
             if (end < start)
                 throw new InvalidOperationException();
 
-            return Content[start..end];
+            return start..end;
         }
 
         public void ResetForNewLine()
@@ -93,26 +81,27 @@ internal static class UserAuthParser
             Action = StateBeginLine;
         }
 
-        public bool IsBase64Char => (CharAUp <= Byte && Byte <= CharZUp)
-                                      || (CharA <= Byte && Byte <= CharZ)
-                                      || (Char0 <= Byte && Byte <= Char9)
-                                      || CharPlus == Byte
-                                      || CharSlash == Byte
-                                      || CharEquals == Byte;
+        public bool IsBase64Char => Byte is >= CharAUp and <= CharZUp
+                                            or >= CharA and <= CharZ
+                                            or >= Char0 and <= Char9
+                                            or CharPlus
+                                            or CharSlash
+                                            or CharEquals;
 
-        public bool IsWhiteSpace => CharSpace == Byte || CharTab == Byte;
+        public bool IsWhiteSpace => Byte is CharSpace or CharTab;
 
         public bool IsNewLine => CharNewLine == Byte;
     }
 
-    public static (ByteString, ByteString) FindPublicKey(ByteString userAuthContent)
+    public static (Range, Range) FindPublicKey(ReadOnlySpan<byte> userAuthContent)
     {
-        var state = new State(userAuthContent);
+        var state = new State();
 
         var l = userAuthContent.Length;
         for (var i = 0; i < l && state.Status == Status.Processing; i++)
         {
             state.Offset = i;
+            state.Byte = userAuthContent[i];
             state.Action(state);
         }
 
