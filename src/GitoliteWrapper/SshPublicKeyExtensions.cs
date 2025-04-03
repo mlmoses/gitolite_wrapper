@@ -146,11 +146,19 @@ internal static class SshPublicKeyExtensions
         return publicKey.ReadSshString(offset);
     }
 
-    private static int ReadSshStringLength(this ReadOnlySpan<byte> publicKey, int offset) =>
-        ((publicKey[offset] & 255) << 24)
-        | ((publicKey[offset + 1] & 255) << 16)
-        | ((publicKey[offset + 2] & 255) << 8)
-        | (publicKey[offset + 3] & 255);
+    private static int ReadSshStringLength(this ReadOnlySpan<byte> publicKey, int offset)
+    {
+        var length = (((uint)publicKey[offset] & 255) << 24)
+                     | (((uint)publicKey[offset + 1] & 255) << 16)
+                     | (((uint)publicKey[offset + 2] & 255) << 8)
+                     | ((uint)publicKey[offset + 3] & 255);
+
+        // OpenSSH strings use 32-bit unsigned integers to represent the length of the string. However, Span<T> and
+        // Memory<T> require 32-it signed integers for all operations. This means we can't work with OpenSSH strings
+        // which are larger than int.MaxValue. Therefore, we use a checked cast here so that encountering such a large
+        // OpenSSH string will result in an exception.
+        return checked((int)length);
+    }
 
     private static ReadOnlySpan<byte> ReadSshString(this ReadOnlySpan<byte> publicKey, int offset) =>
         publicKey.Slice(offset + 4, publicKey.ReadSshStringLength(offset));
