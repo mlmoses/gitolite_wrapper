@@ -35,7 +35,7 @@ internal static class Program
 
     private static Args ParseArgs(IEnumerable<string> args)
     {
-        var shellPath = "gitolite";
+        var shellPath = "gitolite-shell";
         var test = false;
         var next = 0;
         foreach (var a in args)
