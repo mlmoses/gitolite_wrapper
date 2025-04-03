@@ -18,16 +18,6 @@ internal static class SshPublicKeyExtensions
         Ed25519
     }
 
-    private static readonly ReadOnlyMemory<byte>[] CertTypes =
-    [
-        "ssh-rsa-cert-v01@openssh.com"u8.ToArray(),
-        "ssh-dss-cert-v01@openssh.com"u8.ToArray(),
-        "ecdsa-sha2-nistp256-cert-v01@openssh.com"u8.ToArray(),
-        "ecdsa-sha2-nistp384-cert-v01@openssh.com"u8.ToArray(),
-        "ecdsa-sha2-nistp521-cert-v01@openssh.com"u8.ToArray(),
-        "ssh-ed25519-cert-v01@openssh.com"u8.ToArray(),
-    ];
-
     public static string FindGitoliteUser(this ReadOnlySpan<byte> publicKey)
     {
         var typeString = publicKey.ReadSshString(0);
@@ -64,14 +54,22 @@ internal static class SshPublicKeyExtensions
 
     private static CertType GetCertType(this ReadOnlySpan<byte> typeString)
     {
-        var l = CertTypes.Length;
-        for (var i = 0; i < l; i++)
-        {
-            if (CertTypes[i].Span.SequenceEqual(typeString))
-                return (CertType)i;
-        }
-
-        return CertType.None;
+        CertType type;
+        if ("ssh-ed25519-cert-v01@openssh.com"u8.SequenceEqual(typeString))
+            type = CertType.Ed25519;
+        else if ("ssh-rsa-cert-v01@openssh.com"u8.SequenceEqual(typeString))
+            type = CertType.Rsa;
+        else if ("ecdsa-sha2-nistp256-cert-v01@openssh.com"u8.SequenceEqual(typeString))
+            type = CertType.Ecdsa256;
+        else if ("ecdsa-sha2-nistp384-cert-v01@openssh.com"u8.SequenceEqual(typeString))
+            type = CertType.Ecdsa384;
+        else if ("ecdsa-sha2-nistp521-cert-v01@openssh.com"u8.SequenceEqual(typeString))
+            type = CertType.Ecdsa521;
+        else if ("ssh-dss-cert-v01@openssh.com"u8.SequenceEqual(typeString))
+            type = CertType.Dsa;
+        else
+            type = CertType.None;
+        return type;
     }
 
     private static ReadOnlySpan<byte> ReadPrincipalsFromDsa(this ReadOnlySpan<byte> publicKey, int offset)
