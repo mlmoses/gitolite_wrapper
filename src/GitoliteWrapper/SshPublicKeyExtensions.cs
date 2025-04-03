@@ -76,26 +76,6 @@ internal static class SshPublicKeyExtensions
 
     private static ReadOnlySpan<byte> ReadPrincipalsFromDsa(this ReadOnlySpan<byte> publicKey, int offset)
     {
-        /*
-         * string    "ssh-dss-cert-v01@openssh.com"
-         * string    nonce
-         * mpint     p
-         * mpint     q
-         * mpint     g
-         * mpint     y
-         * uint64    serial
-         * uint32    type
-         * string    key id
-         * string    valid principals
-         * uint64    valid after
-         * uint64    valid before
-         * string    critical options
-         * string    extensions
-         * string    reserved
-         * string    signature key
-         * string    signature
-         */
-
         // string nonce
         offset = publicKey.SkipSshString(offset);
         // mpint p
@@ -118,26 +98,6 @@ internal static class SshPublicKeyExtensions
 
     private static ReadOnlySpan<byte> ReadPrincipalsFromEcdsa(this ReadOnlySpan<byte> publicKey, int offset)
     {
-        /*
-         * string    "ecdsa-sha2-nistp256-cert-v01@openssh.com" |
-         *           "ecdsa-sha2-nistp384-cert-v01@openssh.com" |
-         *           "ecdsa-sha2-nistp521-cert-v01@openssh.com"
-         * string    nonce
-         * string    curve
-         * string    public_key
-         * uint64    serial
-         * uint32    type
-         * string    key id
-         * string    valid principals
-         * uint64    valid after
-         * uint64    valid before
-         * string    critical options
-         * string    extensions
-         * string    reserved
-         * string    signature key
-         * string    signature
-         */
-
         // string nonce
         offset = publicKey.SkipSshString(offset);
         // string curve
@@ -156,23 +116,6 @@ internal static class SshPublicKeyExtensions
 
     private static ReadOnlySpan<byte> ReadPrincipalsFromEd25519(this ReadOnlySpan<byte> publicKey, int offset)
     {
-        /*
-         * string    "ssh-ed25519-cert-v01@openssh.com"
-         * string    nonce
-         * string    pk
-         * uint64    serial
-         * uint32    type
-         * string    key id
-         * string    valid principals
-         * uint64    valid after
-         * uint64    valid before
-         * string    critical options
-         * string    extensions
-         * string    reserved
-         * string    signature key
-         * string    signature
-         */
-        
         // string nonce
         offset = publicKey.SkipSshString(offset);
         // string pk
@@ -189,24 +132,6 @@ internal static class SshPublicKeyExtensions
 
     private static ReadOnlySpan<byte> ReadPrincipalsFromRsa(this ReadOnlySpan<byte> publicKey, int offset)
     {
-        /*
-         * string    "ssh-rsa-cert-v01@openssh.com"
-         * string    nonce
-         * mpint     e
-         * mpint     n
-         * uint64    serial
-         * uint32    type
-         * string    key id
-         * string    valid principals
-         * uint64    valid after
-         * uint64    valid before
-         * string    critical options
-         * string    extensions
-         * string    reserved
-         * string    signature key
-         * string    signature
-         */
-
         // string nonce
         offset = publicKey.SkipSshString(offset);
         // mpint e
