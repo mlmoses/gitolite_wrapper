@@ -5,3 +5,7 @@ edition = "2024"
 
 [dependencies]
 base64 = "0.22.1"
+
+[profile.release]
+# Doesn't seem to affect speed, but helps with size.
+lto = "fat"
